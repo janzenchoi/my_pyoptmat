@@ -12,7 +12,7 @@ import time
 class ProgressVisualiser:
 
     # Constructor
-    def __init__(self, num_steps, pretext="", posttext="", clear=False, newline=True):
+    def __init__(self, num_steps, pretext="", posttext="", clear=False, newline=True, quiet=False):
         
         # Initialise inputs
         self.num_steps  = num_steps
@@ -20,6 +20,7 @@ class ProgressVisualiser:
         self.posttext   = posttext
         self.clear      = clear
         self.newline    = newline
+        self.quiet      = quiet
         
         # Initialise other
         self.start_time = time.time()
@@ -48,10 +49,15 @@ class ProgressVisualiser:
 
     # Clears the display string
     def __clear_display__(self):
-        print("\b" * (len(self.display_string)), end="", flush=True)
+        if not self.quiet:
+            print("\b" * (len(self.display_string)), end="", flush=True)
 
     # Prints the progress
     def __print_progress__(self):
+        
+        # For no printing
+        if self.quiet:
+            return
         
         # Clear previous visual and apply pretext
         self.__clear_display__()

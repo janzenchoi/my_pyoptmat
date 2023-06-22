@@ -26,7 +26,11 @@ class Controller:
         
         # Initialise model variables
         self.model = None
+        self.block_size = None
+        self.iterations = None
         self.opt_model = None
+        self.algorithm = None
+        self.loss_function = None
         self.param_dict = {}
         
         # Initialise parameter variables
@@ -37,8 +41,14 @@ class Controller:
         self.data_mapper_dict = {}
         self.csv_dict_list = []
         self.data_bounds_dict = {}
+        
+        # Initialise transformed data variables
         self.dataset = None
-        self.dataset_tuple = ()
+        self.data = None
+        self.results = None
+        self.cycles = None
+        self.types = None
+        self.control = None
 
     # Defines the model
     def define_model(self, model_name):
@@ -114,12 +124,13 @@ class Controller:
     
     # Prepare for the optimisation
     # TODO - allow user to choose different optimisers and objective functions
-    def prepare(self, block_size:int, iterations:int) -> float:
-        self.block_size = block_size
+    def prepare(self, iterations:int, block_size:int,) -> float:
         self.iterations = iterations
+        self.block_size = block_size
         self.opt_model = self.model.get_opt_model(self.initial_param_list, self.block_size)
         self.algorithm = torch.optim.LBFGS(self.opt_model.parameters(), line_search_fn="strong_wolfe")
-        self.mse_loss = torch.nn.MSELoss(reduction="sum")
+        # self.algorithm = torch.optim.Adam(self.opt_model.parameters())
+        self.loss_function = torch.nn.MSELoss(reduction="sum")
     
     # Gets the predicted curves
     # TODO - should return x and y
@@ -138,28 +149,63 @@ class Controller:
     def closure(self):
         self.algorithm.zero_grad()
         prediction = self.get_prediction()
-        lossv = self.mse_loss(prediction, self.results)
+        lossv = self.loss_function(prediction, self.results)
         lossv.backward()
         return lossv
     
     # Conducts the optimisation
-    def optimise(self, display:bool):
+    def optimise(self, display:bool) -> None:
         
-        # Optimise without displaying if desired
-        if not display:
-            for _ in range(self.iterations):
-                self.algorithm.step(self.closure)
-            return
-        
-        # Otherwise, display as we step
-        general.print_value_list("Optimisation:", end="")
+        # Prepare progress recorder
+        if display:
+            general.print_value_list("Optimisation:", end="")
         pretext_format = "loss={}, "
-        pv = progressor.ProgressVisualiser(self.iterations, pretext=pretext_format.format("?"))
+        pv = progressor.ProgressVisualiser(self.iterations, pretext=pretext_format.format("?"), quiet=not display)
+        
+        # Conduct optimisation and record
         for _ in range(self.iterations):
             closure_loss = self.algorithm.step(self.closure)
             loss_value = "{:0.2}".format(closure_loss.detach().cpu().numpy())
             pv.progress(pretext=pretext_format.format(loss_value))
         pv.end()
+        
+    # Writes (and displays) the optimisation results
+    def write_results(self, params_path:str, plot_path:str, display:bool) -> None:
+        
+        # Store results
+        scaled_param_list = [float(getattr(self.opt_model, pn).data) for pn in self.param_dict.keys()]
+        unscaled_param_list = []
+        for i in range(len(scaled_param_list)):
+            param_name = list(self.param_dict.keys())[i]
+            param_mapper = self.param_mapper_dict[param_name]
+            unscaled_param_list.append(param_mapper.unmap(scaled_param_list[i]))
+    
+        # Write the parameters
+        results_fh = open(params_path, "w+")
+        results_fh.write(f"Scaled:   {scaled_param_list}\n")
+        results_fh.write(f"Unscaled: {unscaled_param_list}\n")
+        results_fh.close()
+        
+        # Displays the parameters
+        if display:
+            general.print_value_list("Final Scaled:", scaled_param_list)
+            general.print_value_list("Final Unscaled:", unscaled_param_list)
+    
+        # Unscales the data
+        csv_dict_list = [converter.dataset_to_dict(self.dataset, i) for i in range(self.dataset.nsamples)]
+        for csv_dict in csv_dict_list:
+            for header in ["time", "strain", "stress", "temperature", "cycle"]:
+                data_mapper = self.data_mapper_dict[header]
+                csv_dict[header] = [data_mapper.unmap(value) for value in csv_dict[header]]
+        unscaled_dataset = converter.dict_list_to_dataset(csv_dict_list)
+        
+        # Creates the plots
+        prediction = self.get_prediction()
+        prediction = self.data_mapper_dict["stress"].unmap(prediction)
+        plt = plotter.Plotter(plot_path, "strain", "stress")
+        plt.plot_experimental(unscaled_dataset)
+        plt.plot_prediction(unscaled_dataset, prediction)
+        plt.save()
     
     # Displays the parameter names
     def display_param_names(self):
@@ -173,34 +219,3 @@ class Controller:
         gradients = [getattr(self.opt_model, param_name).grad for param_name in self.param_dict.keys()]
         gradients = [abs(g) for g in gradients]
         general.print_value_list("Initial Gradient:", gradients)
-
-    # Displays the results of the optimisation
-    def display_results(self):
-        
-        # Calculated unscaled parameters
-        scaled_param_list = [float(getattr(self.opt_model, pn).data) for pn in self.param_dict.keys()]
-        unscaled_param_list = []
-        for i in range(len(scaled_param_list)):
-            param_name = list(self.param_dict.keys())[i]
-            param_mapper = self.param_mapper_dict[param_name]
-            unscaled_param_list.append(param_mapper.unmap(scaled_param_list[i]))
-
-        # Print parameters
-        general.print_value_list("Final Scaled:", scaled_param_list)
-        general.print_value_list("Final Unscaled:", unscaled_param_list)
-        
-        # Unscale the data
-        csv_dict_list = [converter.dataset_to_dict(self.dataset, i) for i in range(self.dataset.nsamples)]
-        for csv_dict in csv_dict_list:
-            for header in ["time", "strain", "stress", "temperature", "cycle"]:
-                data_mapper = self.data_mapper_dict[header]
-                csv_dict[header] = [data_mapper.unmap(value) for value in csv_dict[header]]
-        unscaled_dataset = converter.dict_list_to_dataset(csv_dict_list)
-        
-        # Plots the results
-        prediction = self.get_prediction()
-        prediction = self.data_mapper_dict["stress"].unmap(prediction)
-        plt = plotter.Plotter("./plot", "strain", "stress")
-        plt.plot_experimental(unscaled_dataset)
-        plt.plot_prediction(unscaled_dataset, prediction)
-        plt.save()

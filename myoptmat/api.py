@@ -15,13 +15,13 @@ import torch; torch.set_default_tensor_type(torch.DoubleTensor)
 class API:
     
     # Constructor
-    def __init__(self, name="", input_dir:str="./data", output_dir:str="./results"):
+    def __init__(self, name="", input_dir:str="./data", output_dir:str="./results", output_here:bool=False, verbose:bool=True):
         
         # Define internal pathing
         time_str = time.strftime("%y%m%d%H%M%S", time.localtime(time.time()))
         folder_epilogue = f"_{name}" if name != "" else ""
         self.__input_path__ = input_dir
-        self.__output_path__ = f"{output_dir}/{time_str}{folder_epilogue}"
+        self.__output_path__ = f"{output_dir}/{time_str}{folder_epilogue}" if not output_here else "."
 
         # Define parameter variables
         self.__param_scale_dict__ = {}
@@ -34,6 +34,8 @@ class API:
         # Define other internal variables
         self.__model_name__ = None
         self.__device_type__ = "cpu"
+        self.__verbose__ = verbose
+        self.__ctrl__ = controller.Controller()
         
         # Create output folders if they don't exist
         os.mkdir(output_dir) if not os.path.exists(output_dir) else None
@@ -60,7 +62,7 @@ class API:
     
     # Sets the initial value for a parameter
     def initialise_param(self, param_name:str, param_value:float) -> None:
-        self.__initial_param_dict__[param_name] = param_value
+        self.__initial_param_dict__[param_name] = float(param_value)
     
     # Sets the scale for a parameter
     def scale_param(self, param_name:str, l_bound:float=0, u_bound:float=1) -> None:
@@ -71,21 +73,21 @@ class API:
         self.__data_scale_dict__[data_name] = {"l_bound": l_bound, "u_bound": u_bound}
     
     # Initiates optimisation
-    def optimise(self, block_size:int=40, iterations:int=5, display:bool=False) -> None:
-        self.controller = controller.Controller()
-        self.controller.define_model(self.__model_name__)
-        self.controller.define_param_mappers(self.__param_scale_dict__)
-        self.controller.define_initial_values(self.__initial_param_dict__)
-        self.controller.load_csv_files(self.__csv_file_list__)
-        self.controller.define_data_mappers(self.__data_scale_dict__)
-        self.controller.scale_data()
-        self.controller.prepare(iterations, block_size)
-        if display:
-            self.controller.display_param_names()
-            self.controller.display_initial_gradient()
-        self.controller.optimise(display)
+    def optimise(self, iterations:int=5, block_size:int=40) -> None:
+        self.__ctrl__.define_model(self.__model_name__)
+        self.__ctrl__.define_param_mappers(self.__param_scale_dict__)
+        self.__ctrl__.define_initial_values(self.__initial_param_dict__)
+        self.__ctrl__.load_csv_files(self.__csv_file_list__)
+        self.__ctrl__.define_data_mappers(self.__data_scale_dict__)
+        self.__ctrl__.scale_data()
+        self.__ctrl__.prepare(iterations, block_size)
+        if self.__verbose__:
+            self.__ctrl__.display_param_names()
+            self.__ctrl__.display_initial_gradient()
+        self.__ctrl__.optimise(self.__verbose__)
     
-    # Displays the results
-    def display_results(self):
-        self.controller.display_results()
-    
+    # Writes the results
+    def write_results(self, params_file:str="params.txt", plot_file:str="plot.png") -> None:
+        params_path = f"{self.__output_path__}/{params_file}"
+        plot_path = f"{self.__output_path__}/{plot_file}"
+        self.__ctrl__.write_results(params_path, plot_path, self.__verbose__)
