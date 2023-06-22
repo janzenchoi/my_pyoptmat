@@ -7,7 +7,8 @@
 
 # Libraries
 import importlib.util, os, pathlib, sys, torch
-import myoptmat.math.general as general
+from typing import Callable
+import myoptmat.math.mapper as mapper
 from pyoptmat import optimize
 from pyoptmat.models import ModelIntegrator
 from pyoptmat.temperature import ConstantParameter
@@ -22,10 +23,10 @@ class __Model__():
     # Constructor
     def __init__(self):
         self.name = None
-        self.param_list = []
+        self.param_dict = {}
+        self.param_mapper_dict = {}
         self.device = None
         self.opt_model = None
-        self.scale_params = False
     
     # Prepares the model at the start - placeholder that must be overriden
     def prepare(self) -> None:
@@ -45,22 +46,13 @@ class __Model__():
 
     # Adds parameter information
     def define_param(self, name, l_bound, u_bound):
-        param_names = self.get_param_names()
-        if name in param_names:
+        if name in self.param_dict.keys():
             raise ValueError(f"Parameter '{name}' has been defined multiple times!")
-        self.param_list.append({
-            "name": name,
-            "l_bound": l_bound,
-            "u_bound": u_bound,
-        })
-    
-    # Returns the parameter names
-    def get_param_names(self):
-        return [param["name"] for param in self.param_list]
+        self.param_dict[name] = {"l_bound": l_bound, "u_bound": u_bound}
 
-    # Returns the list of parameters
-    def get_param_list(self):
-        return self.param_list
+    # Returns the dictionary of parameters
+    def get_param_dict(self):
+        return self.param_dict
 
     # Sets the device
     def set_device(self, device_type:str="cpu") -> None:
@@ -78,51 +70,38 @@ class __Model__():
         ))
         return ConstantParameter(value, scaling=scaling)
     
+    # Custom clamping and unmapping function
+    def clamp_and_unmap(self, param_mapper:mapper.Mapper) -> Callable:
+        in_l_bound, in_u_bound = param_mapper.get_in_bounds()
+        in_l_bound = torch.tensor(in_l_bound, device=self.device)
+        in_u_bound = torch.tensor(in_u_bound, device=self.device)
+        out_l_bound, out_u_bound = param_mapper.get_out_bounds()
+        return lambda x: torch.clamp(x, out_l_bound, out_u_bound) * (in_u_bound - in_l_bound) + in_l_bound
+    
+    # Define the parameter mappers
+    def define_param_mapper_dict(self, param_mapper_dict:dict):
+        self.param_mapper_dict = param_mapper_dict
+    
     # Calibrates the model with a set of parameters
     def make_model(self, *params, **kwargs) -> ModelIntegrator:
-        
-        # Iterate through parameters
         param_objects = []
         for i in range(len(params)):
-            
-            # Define bounds
-            l_bound = self.param_list[i]["l_bound"]
-            u_bound = self.param_list[i]["u_bound"]
-            
-            # Clamp and scale if scaling is required
-            if self.scale_params:
-                bounds = (torch.tensor(l_bound, device=self.device), torch.tensor(u_bound, device=self.device))
-                scaling = optimize.bounded_scale_function(bounds)
-                param_object = ConstantParameter(params[i], scaling=scaling)
-                
-            # Only clamp if scaling not required
-            else:
-                clamped_param = general.clamp(params[i], l_bound, u_bound)
-                param_object = ConstantParameter(clamped_param)
-            
-            # Append to list of clamped / scaled parameters
+            param_name = list(self.param_dict.keys())[i]
+            param_mapper = self.param_mapper_dict[param_name]
+            scaling = self.clamp_and_unmap(param_mapper)
+            param_object = ConstantParameter(params[i], scaling=scaling)
             param_objects.append(param_object)
-            
-        # Get integrator and return
         integrator = self.get_integrator(*param_objects, **kwargs).to(self.device)
         return integrator
     
     # Gets the deterministic model for optimisation
-    def get_opt_model(self, initial_values:list=(), scale_params:bool=False, block_size:int=1) -> optimize.DeterministicModel:
-        
-        # Initialise
-        self.scale_params = scale_params
-        param_names = self.get_param_names()
-        initial_value_tensors = torch.tensor(initial_values, device=self.device)
-        
-        # Define deterministic model and return
-        opt_model = optimize.DeterministicModel(
+    def get_opt_model(self, initial_values:list, block_size:int) -> optimize.DeterministicModel:
+        return optimize.DeterministicModel(
             lambda *args,
             **kwargs: self.make_model(*args, block_size=block_size, **kwargs),
-            param_names,
-            initial_value_tensors
+            self.param_dict.keys(),
+            torch.tensor(initial_values, device=self.device)
         )
-        return opt_model
 
 # Creates and return a model
 def get_model(model_name:str, device_type:str="cpu") -> __Model__:
