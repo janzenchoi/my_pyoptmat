@@ -1,1 +1,2 @@
-# my_pyoptmat
+# MyOptMat (My PyOptMat)
+The code in the repository serves as an unofficial wrapper for the PyOptMat package, developed by the great people at Argonne National Laboratory. PyOptMat is a package that provides a framework for using machine-learning techniques to calibrate deterministic and statistical models against experimental data. Visit their [repository](https://github.com/Argonne-National-Laboratory/pyoptmat) and [documentation](https://pyoptmat.readthedocs.io/en/stable/) for more information.
