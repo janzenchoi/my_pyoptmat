@@ -5,6 +5,9 @@
 
 """
 
+# Libraries
+import numpy as np
+
 # Mapper class
 class Mapper:
     
@@ -20,6 +23,8 @@ class Mapper:
     def map(self, value:float) -> float:
         if self.distinct:
             return value
+        if isinstance(value, list):
+            return [self.map(v) for v in value]
         factor = (self.out_u_bound - self.out_l_bound) / (self.in_u_bound - self.in_l_bound)
         return (value - self.in_l_bound) * factor + self.out_l_bound
 
@@ -27,5 +32,19 @@ class Mapper:
     def unmap(self, value:float) -> float:
         if self.distinct:
             return value
+        if isinstance(value, list):
+            return [self.unmap(v) for v in value]
         factor = (self.out_u_bound - self.out_l_bound) / (self.in_u_bound - self.in_l_bound)
         return (value - self.out_l_bound) / factor + self.in_l_bound
+    
+    # Produces a random value between the out bounds
+    def random(self) -> float:
+        return np.random.uniform(self.out_l_bound, self.out_u_bound)
+
+    # Returns the in bounds as a tuple
+    def get_in_bounds(self) -> tuple:
+        return (self.in_l_bound, self.in_u_bound)
+
+    # Returns the out bounds as a tuple
+    def get_out_bounds(self) -> tuple:
+        return (self.out_l_bound, self.out_u_bound)

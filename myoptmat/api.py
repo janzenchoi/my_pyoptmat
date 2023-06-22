@@ -35,10 +35,16 @@ class API:
         os.mkdir(output_dir) if not os.path.exists(output_dir) else None
         os.mkdir(self.__output_path__) if not os.path.exists(self.__output_path__) else None
         
+    # Reads data from a folder of CSV files
+    def read_folder(self, csv_folder:str) -> None:
+        csv_folder_path = f"{self.__input_path__}/{csv_folder}"
+        csv_file_path_list = [f"{csv_folder_path}/{file}" for file in os.listdir(csv_folder_path) if file.endswith(".csv")]
+        self.__csv_file_list__ += csv_file_path_list
+        
     # Reads data from a CSV file
-    def read_data(self, csv_file:str) -> None:
-        csv_path = f"{self.__input_path__}/{csv_file}"
-        self.__csv_file_list__.append(csv_path)
+    def read_file(self, csv_file:str) -> None:
+        csv_file_path = f"{self.__input_path__}/{csv_file}"
+        self.__csv_file_list__.append(csv_file_path)
         
     # Defines the device
     def define_device(self, device_type:str="cpu") -> None:
@@ -52,18 +58,28 @@ class API:
     def set_initial_values(self, *initial_values:list) -> None:
         self.__initial_values__ = initial_values
     
-    # Turns on/off scaling of parameters to [0,1]
-    def set_param_scale(self, state:bool=False) -> None:
-        self.__scale_params__ = state
+    # Turns on scaling of parameters to [0,1]
+    def set_param_scale(self) -> None:
+        self.__scale_params__ = True
     
-    # Turns on/off scaling of data to [0,1]
-    def set_data_scale(self, state:bool=False) -> None:
-        self.__scale_data__ = state
+    # Turns on scaling of data to [0,1]
+    def set_data_scale(self) -> None:
+        self.__scale_data__ = True
+    
+    # Define scales for the model parameters
+    def define_param_scales(self, bounds=dict) -> None:
+        self.__param_scale_list__ = bounds
+    
+    # Define scales for the model parameters
+    def define_data_scales(self, bounds=dict) -> None:
+        self.__data_scale_list__ = bounds
     
     # Initiates optimisation
     def optimise(self, iterations:int=5, block_size:int=40) -> None:
-        opt = optimiser.Optimiser(self.__model_name__)
-        opt.initialise_params(self.__initial_values__, self.__scale_params__)
-        opt.initialise_data(self.__csv_file_list__, self.__scale_data__)
+        opt = optimiser.Optimiser(self.__model_name__, self.__scale_params__, self.__scale_data__)
+        opt.initialise_params(self.__initial_values__)
+        opt.initialise_data(self.__csv_file_list__)
         opt.initialise_settings(block_size)
+        opt.get_gradient()
         opt.conduct_optimisation(iterations)
+        opt.display_results()

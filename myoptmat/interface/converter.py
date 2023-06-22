@@ -9,7 +9,7 @@
 import math, xarray
 
 # Constants
-NUM_POINTS = 100
+NUM_POINTS = 50
 DEFAULT_VALUES = {
     "time": 0,
     "strain": 0,
