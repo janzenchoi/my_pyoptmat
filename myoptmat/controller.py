@@ -6,16 +6,17 @@
 """
 
 # Libraries
-import torch
+import torch, copy
 import myoptmat.interface.converter as converter
-import myoptmat.interface.plotter as plotter
 import myoptmat.interface.progressor as progressor
 import myoptmat.interface.reader as reader
+import myoptmat.interface.recorder as recorder
 import myoptmat.math.mapper as mapper
 import myoptmat.math.general as general
 import myoptmat.models.__model__ as __model__
 
 # Constants
+NUM_POINTS = 50
 HEADER_LIST = ["time", "strain", "stress", "temperature", "cycle"]
 
 # Controller class
@@ -40,6 +41,7 @@ class Controller:
         # Initialise data variables
         self.data_mapper_dict = {}
         self.csv_dict_list = []
+        self.raw_csv_dict_list = []
         self.data_bounds_dict = {}
         
         # Initialise transformed data variables
@@ -50,8 +52,13 @@ class Controller:
         self.types = None
         self.control = None
 
+        # Initialise result variables
+        self.loss_value_list = []
+        self.recorder = None
+        self.record_iterations = None
+
     # Defines the model
-    def define_model(self, model_name):
+    def define_model(self, model_name:str):
         self.model = __model__.get_model(model_name)
         self.param_dict = self.model.get_param_dict()
     
@@ -89,7 +96,8 @@ class Controller:
         
         # Load CSV data
         for csv_file in csv_file_list:
-            self.csv_dict_list.append(converter.csv_to_dict(csv_file))
+            csv_dict = converter.csv_to_dict(csv_file)
+            self.csv_dict_list.append(csv_dict)
             
         # Define bounds for each header
         for header in HEADER_LIST:
@@ -115,27 +123,39 @@ class Controller:
             self.data_mapper_dict[header] = data_mapper
     
     # Scale the data
-    def scale_data(self):
+    def scale_and_process_data(self):
+                
+        # Checks and process dictionaries
+        [converter.check_dict(data_dict) for data_dict in self.csv_dict_list]
+        self.csv_dict_list = [converter.process_dict(data_dict, NUM_POINTS) for data_dict in self.csv_dict_list]
+        self.raw_csv_dict_list = copy.deepcopy(self.csv_dict_list)
+        
+        # Scale the data
         for csv_dict in self.csv_dict_list:
             for header in HEADER_LIST:
                 csv_dict[header] = self.data_mapper_dict[header].map(csv_dict[header])
-        self.dataset = converter.dict_list_to_dataset(self.csv_dict_list)
+    
+        # Convert to datasets
+        self.dataset = converter.dict_list_to_dataset(self.csv_dict_list, 1, NUM_POINTS)
         self.data, self.results, self.cycles, self.types, self.control = reader.load_dataset(self.dataset)
     
     # Prepare for the optimisation
     # TODO - allow user to choose different optimisers and objective functions
-    def prepare(self, iterations:int, block_size:int,) -> float:
+    def prepare(self, iterations:int, block_size:int) -> float:
+        
+        # Define optimisation parameters
         self.iterations = iterations
         self.block_size = block_size
+        
+        # Get deterministic model
         self.opt_model = self.model.get_opt_model(self.initial_param_list, self.block_size)
-        self.algorithm = torch.optim.LBFGS(self.opt_model.parameters(), line_search_fn="strong_wolfe")
-        # self.algorithm = torch.optim.Adam(self.opt_model.parameters())
+        params = self.opt_model.parameters()
+        
+        # Define algorithm and loss functions
+        # self.algorithm = torch.optim.LBFGS(params)
+        self.algorithm = torch.optim.LBFGS(params, line_search_fn="strong_wolfe")
+        # self.algorithm = torch.optim.Adam(params)
         self.loss_function = torch.nn.MSELoss(reduction="sum")
-    
-    # Gets the predicted curves
-    # TODO - should return x and y
-    def get_predicted_curves(self):
-        pass
     
     # Gets the optimal prediction
     # TODO - use torch.transpose(prediction, 0, 1)[0] to allow different input types
@@ -152,69 +172,99 @@ class Controller:
         lossv = self.loss_function(prediction, self.results)
         lossv.backward()
         return lossv
+
+    # Initialises the recorder
+    def initialise_recorder(self, record_path:str, record_iterations:int):
+        self.recorder = recorder.Recorder(record_path)
+        self.record_iterations = record_iterations
     
     # Conducts the optimisation
-    def optimise(self, display:bool) -> None:
+    def optimise(self) -> None:
         
-        # Prepare progress recorder
-        if display:
-            general.print_value_list("Optimisation:", end="")
-        pretext_format = "loss={}, "
-        pv = progressor.ProgressVisualiser(self.iterations, pretext=pretext_format.format("?"), quiet=not display)
-        
-        # Conduct optimisation and record
-        for _ in range(self.iterations):
+        # Initialise optimisation
+        general.print_value_list("Optimisation:", end="")
+        pv = progressor.ProgressVisualiser(self.iterations, pretext="loss=?, ")
+        for curr_iteration in range(1, self.iterations+1):
+            
+            # Take a step, add loss to history, and print loss
             closure_loss = self.algorithm.step(self.closure)
             loss_value = "{:0.2}".format(closure_loss.detach().cpu().numpy())
-            pv.progress(pretext=pretext_format.format(loss_value))
+            pv.progress(pretext=f"loss={loss_value}, ")
+            self.loss_value_list.append(float(loss_value))
+            
+            # If recorder initialised and iterations reached, then record results
+            if self.recorder != None and curr_iteration % self.record_iterations == 0:
+                self.record_results(curr_iteration)
+        
+        # End the visualisation
         pv.end()
+
+    # Runs each step of the optimisation
+    def record_results(self, curr_iteration:int) -> None:
         
-    # Writes (and displays) the optimisation results
-    def write_results(self, params_path:str, plot_path:str, display:bool) -> None:
+        # Initialise
+        curr_iteration = str(curr_iteration).zfill(len(str(self.iterations)))
+        self.recorder.create_new_file(curr_iteration)
+        x_label, y_label = "strain", "stress"
         
-        # Store results
-        scaled_param_list = [float(getattr(self.opt_model, pn).data) for pn in self.param_dict.keys()]
-        unscaled_param_list = []
-        for i in range(len(scaled_param_list)):
-            param_name = list(self.param_dict.keys())[i]
+        # Calculate bounds and scales
+        param_bound_list, param_scale_list = [], []
+        for param_name in self.param_dict.keys():
             param_mapper = self.param_mapper_dict[param_name]
-            unscaled_param_list.append(param_mapper.unmap(scaled_param_list[i]))
-    
-        # Write the parameters
-        results_fh = open(params_path, "w+")
-        results_fh.write(f"Scaled:   {scaled_param_list}\n")
-        results_fh.write(f"Unscaled: {unscaled_param_list}\n")
-        results_fh.close()
+            in_bounds = param_mapper.get_in_bounds()
+            param_bound_list.append(f"[{in_bounds[0]}, {in_bounds[1]}]")
+            out_bounds = param_mapper.get_out_bounds()
+            param_scale_list.append(f"[{out_bounds[0]}, {out_bounds[1]}]")
         
-        # Displays the parameters
-        if display:
-            general.print_value_list("Final Scaled:", scaled_param_list)
-            general.print_value_list("Final Unscaled:", unscaled_param_list)
-    
-        # Unscales the data
-        csv_dict_list = [converter.dataset_to_dict(self.dataset, i) for i in range(self.dataset.nsamples)]
-        for csv_dict in csv_dict_list:
-            for header in ["time", "strain", "stress", "temperature", "cycle"]:
-                data_mapper = self.data_mapper_dict[header]
-                csv_dict[header] = [data_mapper.unmap(value) for value in csv_dict[header]]
-        unscaled_dataset = converter.dict_list_to_dataset(csv_dict_list)
+        # Calculate optimised parameters
+        opt_param_list = []
+        for param_name in self.param_dict.keys():
+            scaled_param = float(getattr(self.opt_model, param_name).data)
+            param_mapper = self.param_mapper_dict[param_name]
+            unscaled_param = param_mapper.unmap(scaled_param)
+            opt_param_list.append(unscaled_param)
+
+        # Write the results
+        self.recorder.write_data({
+            "parameter":    list(self.param_dict.keys()),
+            "bounds":       param_bound_list,
+            "scales":       param_scale_list,
+            "optimised":     opt_param_list,
+        }, "results")
         
-        # Creates the plots
+        # Get prediction
         prediction = self.get_prediction()
-        prediction = self.data_mapper_dict["stress"].unmap(prediction)
-        plt = plotter.Plotter(plot_path, "strain", "stress")
-        plt.plot_experimental(unscaled_dataset)
-        plt.plot_prediction(unscaled_dataset, prediction)
-        plt.save()
+        prediction = self.data_mapper_dict[y_label].unmap(prediction)
+
+        # Get experimental and predicted data       
+        exp_x_list, exp_y_list, prd_y_list = [], [], []
+        for i in range(len(self.raw_csv_dict_list)):
+            exp_x_list += self.raw_csv_dict_list[i][x_label]
+            exp_y_list += self.raw_csv_dict_list[i][y_label]
+            prd_y_list += [p[i] for p in prediction.tolist()]
+
+        # Plot experimental and predicted data
+        self.recorder.write_plot({
+            "experimental": {"x": exp_x_list, "y": exp_y_list, "size": 5},
+            "predicted":    {"x": exp_x_list, "y": prd_y_list, "size": 3}
+        }, "plot", x_label, y_label, "scatter")
+        
+        # Plots the loss history
+        loss_x_list = list(range(1, len(self.loss_value_list)+1))
+        self.recorder.write_plot({
+            "loss history": {"x": loss_x_list, "y": self.loss_value_list, "size": 3}
+        }, "loss", "iteration", "loss", "line")
+        
+        # Saves the file
+        self.recorder.close()
     
-    # Displays the parameter names
-    def display_param_names(self):
-        general.print_value_list("Parameters:", end="")
-        print(f"[{', '.join([param_name for param_name in self.param_dict.keys()])}]")
-        general.print_value_list("Initial Scaled:", self.initial_param_list)
-    
-    # Displays the initial gradient
-    def display_initial_gradient(self):
+    # Displays the initial parameters and initial gradient
+    def display_initial_information(self):
+        
+        # Display initial parameters
+        general.print_value_list("Initial Params:", self.initial_param_list)
+        
+        # Print initial gradient
         self.closure()
         gradients = [getattr(self.opt_model, param_name).grad for param_name in self.param_dict.keys()]
         gradients = [abs(g) for g in gradients]

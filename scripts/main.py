@@ -1,11 +1,12 @@
 import sys; sys.path += [".."]
 from myoptmat.api import API
-
 api = API(output_here=True)
+
 api.define_device("cpu")
 api.define_model("test")
 
 # api.read_file("tensile/AirBase_20_D5.csv")
+# api.read_file("test/test_1.csv")
 api.read_folder("test")
 
 api.scale_param("n",   0, 1)
@@ -20,5 +21,5 @@ api.scale_data("stress",      0, 1)
 api.scale_data("temperature", 0, 1)
 api.scale_data("cycle",       0, 1)
 
-api.optimise(iterations=20)
-api.write_results()
+api.record(iterations=10)
+api.optimise(iterations=10)

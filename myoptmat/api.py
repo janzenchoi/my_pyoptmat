@@ -15,7 +15,7 @@ import torch; torch.set_default_tensor_type(torch.DoubleTensor)
 class API:
     
     # Constructor
-    def __init__(self, name="", input_dir:str="./data", output_dir:str="./results", output_here:bool=False, verbose:bool=True):
+    def __init__(self, name="", input_dir:str="./data", output_dir:str="./results", output_here:bool=False):
         
         # Define internal pathing
         time_str = time.strftime("%y%m%d%H%M%S", time.localtime(time.time()))
@@ -34,12 +34,12 @@ class API:
         # Define other internal variables
         self.__model_name__ = None
         self.__device_type__ = "cpu"
-        self.__verbose__ = verbose
         self.__ctrl__ = controller.Controller()
         
         # Create output folders if they don't exist
-        os.mkdir(output_dir) if not os.path.exists(output_dir) else None
-        os.mkdir(self.__output_path__) if not os.path.exists(self.__output_path__) else None
+        if not output_here:
+            os.mkdir(output_dir) if not os.path.exists(output_dir) else None
+            os.mkdir(self.__output_path__) if not os.path.exists(self.__output_path__) else None
         
     # Reads data from a folder of CSV files
     def read_folder(self, csv_folder:str) -> None:
@@ -72,6 +72,11 @@ class API:
     def scale_data(self, data_name:str, l_bound:float=0, u_bound:float=1) -> None:
         self.__data_scale_dict__[data_name] = {"l_bound": l_bound, "u_bound": u_bound}
     
+    # Initialises the recorder
+    def record(self, iterations:int=5) -> None:
+        record_path = f"{self.__output_path__}/record"
+        self.__ctrl__.initialise_recorder(record_path, iterations)
+    
     # Initiates optimisation
     def optimise(self, iterations:int=5, block_size:int=40) -> None:
         self.__ctrl__.define_model(self.__model_name__)
@@ -79,15 +84,7 @@ class API:
         self.__ctrl__.define_initial_values(self.__initial_param_dict__)
         self.__ctrl__.load_csv_files(self.__csv_file_list__)
         self.__ctrl__.define_data_mappers(self.__data_scale_dict__)
-        self.__ctrl__.scale_data()
+        self.__ctrl__.scale_and_process_data()
         self.__ctrl__.prepare(iterations, block_size)
-        if self.__verbose__:
-            self.__ctrl__.display_param_names()
-            self.__ctrl__.display_initial_gradient()
-        self.__ctrl__.optimise(self.__verbose__)
-    
-    # Writes the results
-    def write_results(self, params_file:str="params.txt", plot_file:str="plot.png") -> None:
-        params_path = f"{self.__output_path__}/{params_file}"
-        plot_path = f"{self.__output_path__}/{plot_file}"
-        self.__ctrl__.write_results(params_path, plot_path, self.__verbose__)
+        self.__ctrl__.display_initial_information()
+        self.__ctrl__.optimise()

@@ -9,7 +9,6 @@
 import math, xarray
 
 # Constants
-NUM_POINTS = 50
 DEFAULT_VALUES = {
     "time": 0,
     "strain": 0,
@@ -97,7 +96,7 @@ def check_dict(data_dict:dict) -> None:
             raise ValueError(f"The lists must have the same number of data points!")
 
 # Processes the data in a dictionary to conform to PyOptMat's format
-def process_dict(data_dict:dict, num_points:int, default_values:dict) -> dict:
+def process_dict(data_dict:dict, num_points:int, default_values:dict=DEFAULT_VALUES) -> dict:
     
     # Initialise
     new_dict = {}
@@ -121,11 +120,7 @@ def process_dict(data_dict:dict, num_points:int, default_values:dict) -> dict:
     return new_dict
 
 # Converts a list of dictionaries into a dataset
-def dict_list_to_dataset(dict_list:list, scale:float=1, num_points:int=NUM_POINTS, default_values:dict=DEFAULT_VALUES) -> xarray.core.dataset.Dataset:
-
-    # Checks and process dictionaries
-    [check_dict(data_dict) for data_dict in dict_list]
-    dict_list = [process_dict(data_dict, num_points, default_values) for data_dict in dict_list]
+def dict_list_to_dataset(dict_list:list, scale:float, num_points:int) -> xarray.core.dataset.Dataset:
     
     # Combine the dictionaries together
     combined_dict = {}
