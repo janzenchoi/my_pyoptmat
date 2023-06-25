@@ -73,6 +73,8 @@ class Recorder:
             })
         
         # Add axes and add the chart to the sheet
+        if len(data_dict_dict.keys()) == 1:
+            chart.set_legend({"none": True})
         chart.set_x_axis({"name": x_label, "major_gridlines": {"visible": True}})
         chart.set_y_axis({"name": y_label, "major_gridlines": {"visible": True}})
         sheet.insert_chart("A1", chart)

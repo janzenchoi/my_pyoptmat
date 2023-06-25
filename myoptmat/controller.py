@@ -106,6 +106,11 @@ class Controller:
             csv_dict = converter.csv_to_dict(csv_file)
             self.csv_dict_list.append(csv_dict)
             
+        # Checks and process dictionaries
+        [converter.check_dict(data_dict) for data_dict in self.csv_dict_list]
+        self.csv_dict_list = [converter.process_dict(data_dict, NUM_POINTS) for data_dict in self.csv_dict_list]
+        self.raw_csv_dict_list = copy.deepcopy(self.csv_dict_list) # make a copy
+        
         # Define bounds for each header
         for header in HEADER_LIST:
             data_list = [csv_dict[header] for csv_dict in self.csv_dict_list]
@@ -131,18 +136,9 @@ class Controller:
     
     # Scale the data
     def scale_and_process_data(self):
-                
-        # Checks and process dictionaries
-        [converter.check_dict(data_dict) for data_dict in self.csv_dict_list]
-        self.csv_dict_list = [converter.process_dict(data_dict, NUM_POINTS) for data_dict in self.csv_dict_list]
-        self.raw_csv_dict_list = copy.deepcopy(self.csv_dict_list) # make a copy
-        
-        # Scale the data
         for csv_dict in self.csv_dict_list:
             for header in HEADER_LIST:
                 csv_dict[header] = self.data_mapper_dict[header].map(csv_dict[header])
-    
-        # Convert to datasets
         self.dataset = converter.dict_list_to_dataset(self.csv_dict_list, 1, NUM_POINTS)
         self.data, self.results, self.cycles, self.types, self.control = reader.load_dataset(self.dataset)
     
@@ -160,8 +156,8 @@ class Controller:
         
         # Define algorithm and loss functions
         # self.algorithm = torch.optim.LBFGS(params)
-        self.algorithm = torch.optim.LBFGS(params, line_search_fn="strong_wolfe")
-        # self.algorithm = torch.optim.Adam(params)
+        # self.algorithm = torch.optim.LBFGS(params, line_search_fn="strong_wolfe")
+        self.algorithm = torch.optim.Adam(params)
         self.loss_function = torch.nn.MSELoss(reduction="sum")
     
     # Prepares the summary information
@@ -283,8 +279,13 @@ class Controller:
         
         # Plots the loss history
         loss_x_list = list(range(1, len(self.loss_value_list)+1))
+        thin_indexes = general.get_thin_indexes(len(self.loss_value_list), NUM_POINTS)
         self.recorder.write_plot({
-            "loss history": {"x": loss_x_list, "y": self.loss_value_list, "size": 3}
+            "loss history": {
+                "x": [loss_x_list[i] for i in thin_indexes],
+                "y": [self.loss_value_list[i] for i in thin_indexes],
+                "size": 3
+            }
         }, "loss", "iteration", "loss", "line")
         
         # Saves the file

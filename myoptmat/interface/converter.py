@@ -6,7 +6,8 @@
  """
 
 # Libraries
-import math, xarray
+import xarray
+import myoptmat.math.general as general
 
 # Constants
 DEFAULT_VALUES = {
@@ -80,13 +81,6 @@ def dict_to_csv(data_dict:dict, csv_path:str) -> None:
         csv_fh.write(row_str + "\n")
     csv_fh.close()
     
-# Returns a list of indexes corresponding to thinned data
-def get_thin_indexes(src_data_size, dst_data_size):
-    step_size = src_data_size/dst_data_size
-    thin_indexes = [math.floor(step_size*i) for i in range(1,dst_data_size-1)]
-    thin_indexes = [0] + thin_indexes + [src_data_size-1]
-    return thin_indexes
-
 # Checks the validity of a dictionary for conversion into a dataset
 def check_dict(data_dict:dict) -> None:
     if not "time" in data_dict.keys() or not isinstance(data_dict["time"], list):
@@ -100,7 +94,7 @@ def process_dict(data_dict:dict, num_points:int, default_values:dict=DEFAULT_VAL
     
     # Initialise
     new_dict = {}
-    thin_indexes = get_thin_indexes(len(data_dict["time"]), num_points)
+    thin_indexes = general.get_thin_indexes(len(data_dict["time"]), num_points)
     
     # Process the lists
     for header in ["time", "strain", "stress", "temperature", "cycle"]:
