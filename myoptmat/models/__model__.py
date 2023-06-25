@@ -7,14 +7,13 @@
 
 # Libraries
 import importlib.util, os, pathlib, sys, torch
-from typing import Callable
 import myoptmat.math.mapper as mapper
+from typing import Callable
 from pyoptmat import optimize
 from pyoptmat.models import ModelIntegrator
 from pyoptmat.temperature import ConstantParameter
 
 # Constants
-PATH_TO_MODELS = "myoptmat/models"
 EXCLUSION_LIST = ["__model__", "__pycache__"]
 
 # Model Template
@@ -76,7 +75,8 @@ class __Model__():
         in_l_bound = torch.tensor(in_l_bound, device=self.device)
         in_u_bound = torch.tensor(in_u_bound, device=self.device)
         out_l_bound, out_u_bound = param_mapper.get_out_bounds()
-        return lambda x: torch.clamp(x, out_l_bound, out_u_bound) * (in_u_bound - in_l_bound) + in_l_bound
+        factor = (out_u_bound - out_l_bound) / (in_u_bound - in_l_bound)
+        return lambda x: (x - out_l_bound) / factor + in_l_bound # no clamp
     
     # Define the parameter mappers
     def define_param_mapper_dict(self, param_mapper_dict:dict):

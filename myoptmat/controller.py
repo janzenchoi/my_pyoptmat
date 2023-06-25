@@ -37,6 +37,8 @@ class Controller:
         # Initialise parameter variables
         self.param_mapper_dict = {}
         self.initial_param_list = []
+        self.param_bound_list = []
+        self.param_scale_list = []
         
         # Initialise data variables
         self.data_mapper_dict = {}
@@ -79,6 +81,15 @@ class Controller:
             param_mapper = mapper.Mapper(in_l_bound, in_u_bound, out_l_bound, out_u_bound)
             self.param_mapper_dict[param_name] = param_mapper
 
+        # Get bound / scale summary
+        self.param_bound_list, self.param_scale_list = [], []
+        for param_name in self.param_dict.keys():
+            param_mapper = self.param_mapper_dict[param_name]
+            in_bounds = param_mapper.get_in_bounds()
+            self.param_bound_list.append(f"[{in_bounds[0]}, {in_bounds[1]}]")
+            out_bounds = param_mapper.get_out_bounds()
+            self.param_scale_list.append(f"[{out_bounds[0]}, {out_bounds[1]}]")
+
         # Pass mapper dictionary to model
         self.model.define_param_mapper_dict(self.param_mapper_dict)
     
@@ -87,6 +98,7 @@ class Controller:
         for param_name in self.param_dict.keys():
             if param_name in initial_param_dict.keys():
                 initial_value = initial_param_dict[param_name]
+                initial_value = self.param_mapper_dict[param_name].map(initial_value)
             else:
                 initial_value = self.param_mapper_dict[param_name].random()
             self.initial_param_list.append(initial_value)
@@ -128,7 +140,7 @@ class Controller:
         # Checks and process dictionaries
         [converter.check_dict(data_dict) for data_dict in self.csv_dict_list]
         self.csv_dict_list = [converter.process_dict(data_dict, NUM_POINTS) for data_dict in self.csv_dict_list]
-        self.raw_csv_dict_list = copy.deepcopy(self.csv_dict_list)
+        self.raw_csv_dict_list = copy.deepcopy(self.csv_dict_list) # make a copy
         
         # Scale the data
         for csv_dict in self.csv_dict_list:
@@ -159,14 +171,14 @@ class Controller:
     
     # Gets the optimal prediction
     # TODO - use torch.transpose(prediction, 0, 1)[0] to allow different input types
-    def get_prediction(self):
+    def get_prediction(self) -> torch.tensor:
         prediction = self.opt_model(self.data, self.cycles, self.types, self.control)
         prediction_mapper = self.data_mapper_dict["stress"]
         prediction = prediction_mapper.map(prediction)
         return prediction
     
     # Calculates the prediction discrepancy    
-    def closure(self):
+    def closure(self) -> float:
         self.algorithm.zero_grad()
         prediction = self.get_prediction()
         lossv = self.loss_function(prediction, self.results)
@@ -174,10 +186,37 @@ class Controller:
         return lossv
 
     # Initialises the recorder
-    def initialise_recorder(self, record_path:str, record_iterations:int):
+    def initialise_recorder(self, record_path:str, record_iterations:int) -> None:
         self.recorder = recorder.Recorder(record_path)
         self.record_iterations = record_iterations
     
+    # Get current unscaled optimal parameters
+    def get_opt_params(self) -> list:
+        opt_param_list = []
+        for param_name in self.param_dict.keys():
+            scaled_param = float(getattr(self.opt_model, param_name).data)
+            param_mapper = self.param_mapper_dict[param_name]
+            unscaled_param = param_mapper.unmap(scaled_param)
+            opt_param_list.append(unscaled_param)
+        return opt_param_list
+    
+    # Get experimental and predicted data (based on optimal parameters)
+    def get_exp_prd_data(self, x_label:str, y_label:str) -> tuple:
+        
+        # Get prediction
+        prediction = self.get_prediction()
+        prediction = self.data_mapper_dict[y_label].unmap(prediction)
+
+        # Get experimental and predicted data
+        exp_x_list, exp_y_list, prd_y_list = [], [], []
+        for i in range(len(self.raw_csv_dict_list)):
+            exp_x_list += self.raw_csv_dict_list[i][x_label]
+            exp_y_list += self.raw_csv_dict_list[i][y_label]
+            prd_y_list += [p[i] for p in prediction.tolist()]
+        
+        # Return data
+        return exp_x_list, exp_y_list, prd_y_list
+
     # Conducts the optimisation
     def optimise(self) -> None:
         
@@ -196,7 +235,9 @@ class Controller:
             if self.recorder != None and curr_iteration % self.record_iterations == 0:
                 self.record_results(curr_iteration)
         
-        # End the visualisation
+        # End optimisation
+        opt_params = self.get_opt_params()
+        general.print_value_list("Final Params:", opt_params)
         pv.end()
 
     # Runs each step of the optimisation
@@ -206,44 +247,17 @@ class Controller:
         curr_iteration = str(curr_iteration).zfill(len(str(self.iterations)))
         self.recorder.create_new_file(curr_iteration)
         x_label, y_label = "strain", "stress"
-        
-        # Calculate bounds and scales
-        param_bound_list, param_scale_list = [], []
-        for param_name in self.param_dict.keys():
-            param_mapper = self.param_mapper_dict[param_name]
-            in_bounds = param_mapper.get_in_bounds()
-            param_bound_list.append(f"[{in_bounds[0]}, {in_bounds[1]}]")
-            out_bounds = param_mapper.get_out_bounds()
-            param_scale_list.append(f"[{out_bounds[0]}, {out_bounds[1]}]")
-        
-        # Calculate optimised parameters
-        opt_param_list = []
-        for param_name in self.param_dict.keys():
-            scaled_param = float(getattr(self.opt_model, param_name).data)
-            param_mapper = self.param_mapper_dict[param_name]
-            unscaled_param = param_mapper.unmap(scaled_param)
-            opt_param_list.append(unscaled_param)
 
-        # Write the results
+        # Write the parameter results
         self.recorder.write_data({
             "parameter":    list(self.param_dict.keys()),
-            "bounds":       param_bound_list,
-            "scales":       param_scale_list,
-            "optimised":     opt_param_list,
+            "bounds":       self.param_bound_list,
+            "scales":       self.param_scale_list,
+            "optimised":    self.get_opt_params(),
         }, "results")
         
-        # Get prediction
-        prediction = self.get_prediction()
-        prediction = self.data_mapper_dict[y_label].unmap(prediction)
-
-        # Get experimental and predicted data       
-        exp_x_list, exp_y_list, prd_y_list = [], [], []
-        for i in range(len(self.raw_csv_dict_list)):
-            exp_x_list += self.raw_csv_dict_list[i][x_label]
-            exp_y_list += self.raw_csv_dict_list[i][y_label]
-            prd_y_list += [p[i] for p in prediction.tolist()]
-
         # Plot experimental and predicted data
+        exp_x_list, exp_y_list, prd_y_list = self.get_exp_prd_data(x_label, y_label)
         self.recorder.write_plot({
             "experimental": {"x": exp_x_list, "y": exp_y_list, "size": 5},
             "predicted":    {"x": exp_x_list, "y": prd_y_list, "size": 3}
@@ -262,7 +276,13 @@ class Controller:
     def display_initial_information(self):
         
         # Display initial parameters
-        general.print_value_list("Initial Params:", self.initial_param_list)
+        initial_unscaled_param_list = []
+        for i in range(len(self.param_dict.keys())):
+            param_name = list(self.param_dict.keys())[i]
+            param_mapper = self.param_mapper_dict[param_name]
+            unscaled_param = param_mapper.unmap(self.initial_param_list[i])
+            initial_unscaled_param_list.append(unscaled_param)
+        general.print_value_list("Initial Params:", initial_unscaled_param_list)
         
         # Print initial gradient
         self.closure()
