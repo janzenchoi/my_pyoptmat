@@ -43,8 +43,8 @@ class Mapper:
 
     # Returns the in bounds as a tuple
     def get_in_bounds(self) -> tuple:
-        return (self.in_l_bound, self.in_u_bound)
+        return self.in_l_bound, self.in_u_bound
 
     # Returns the out bounds as a tuple
     def get_out_bounds(self) -> tuple:
-        return (self.out_l_bound, self.out_u_bound)
+        return self.out_l_bound, self.out_u_bound

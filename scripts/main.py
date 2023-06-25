@@ -3,7 +3,7 @@ from myoptmat.api import API
 api = API(output_here=True)
 
 api.define_device("cpu")
-api.define_model("evp")
+api.define_model("test")
 
 # api.read_file("tensile/AirBase_20_D5.csv")
 api.read_file("test/test_1.csv")

@@ -37,8 +37,6 @@ class Controller:
         # Initialise parameter variables
         self.param_mapper_dict = {}
         self.initial_param_list = []
-        self.param_bound_list = []
-        self.param_scale_list = []
         
         # Initialise data variables
         self.data_mapper_dict = {}
@@ -53,6 +51,12 @@ class Controller:
         self.cycles = None
         self.types = None
         self.control = None
+        
+        # Initialise summary variables
+        self.param_in_bound_list = []
+        self.param_out_bound_list = []
+        self.data_in_bound_list = []
+        self.data_out_bound_list = []
 
         # Initialise result variables
         self.loss_value_list = []
@@ -80,15 +84,6 @@ class Controller:
             # Create parameter mapper and add
             param_mapper = mapper.Mapper(in_l_bound, in_u_bound, out_l_bound, out_u_bound)
             self.param_mapper_dict[param_name] = param_mapper
-
-        # Get bound / scale summary
-        self.param_bound_list, self.param_scale_list = [], []
-        for param_name in self.param_dict.keys():
-            param_mapper = self.param_mapper_dict[param_name]
-            in_bounds = param_mapper.get_in_bounds()
-            self.param_bound_list.append(f"[{in_bounds[0]}, {in_bounds[1]}]")
-            out_bounds = param_mapper.get_out_bounds()
-            self.param_scale_list.append(f"[{out_bounds[0]}, {out_bounds[1]}]")
 
         # Pass mapper dictionary to model
         self.model.define_param_mapper_dict(self.param_mapper_dict)
@@ -169,6 +164,25 @@ class Controller:
         # self.algorithm = torch.optim.Adam(params)
         self.loss_function = torch.nn.MSELoss(reduction="sum")
     
+    # Prepares the summary information
+    def prepare_summary(self):
+    
+        # Get bound / scale summary for parameters
+        for param_name in self.param_dict.keys():
+            param_mapper = self.param_mapper_dict[param_name]
+            in_l_bound, in_u_bound = param_mapper.get_in_bounds()
+            self.param_in_bound_list.append("[{:0.3}, {:0.3}]".format(float(in_l_bound), float(in_u_bound)))
+            out_l_bound, out_u_bound = param_mapper.get_out_bounds()
+            self.param_out_bound_list.append("[{:0.3}, {:0.3}]".format(float(out_l_bound), float(out_u_bound)))
+    
+        # Get scale summary for data
+        for header in HEADER_LIST:
+            data_mapper = self.data_mapper_dict[header]
+            in_l_bound, in_u_bound = data_mapper.get_in_bounds()
+            self.data_in_bound_list.append("[{:0.3}, {:0.3}]".format(float(in_l_bound), float(in_u_bound)))
+            out_l_bound, out_u_bound = data_mapper.get_out_bounds()
+            self.data_out_bound_list.append("[{:0.3}, {:0.3}]".format(float(out_l_bound), float(out_u_bound)))
+    
     # Gets the optimal prediction
     # TODO - use torch.transpose(prediction, 0, 1)[0] to allow different input types
     def get_prediction(self) -> torch.tensor:
@@ -248,13 +262,17 @@ class Controller:
         self.recorder.create_new_file(curr_iteration)
         x_label, y_label = "strain", "stress"
 
-        # Write the parameter results
+        # Write the parameter and data summary
         self.recorder.write_data({
+            "data":         HEADER_LIST,
+            "d. bounds":       self.data_in_bound_list,
+            "d. scales":       self.data_out_bound_list,
+            "|":            ["|"] * len(self.param_dict.keys()),
             "parameter":    list(self.param_dict.keys()),
-            "bounds":       self.param_bound_list,
-            "scales":       self.param_scale_list,
-            "optimised":    self.get_opt_params(),
-        }, "results")
+            "p. bounds":       self.param_in_bound_list,
+            "p. scales":       self.param_out_bound_list,
+            "p. optimised":    self.get_opt_params(),
+        }, "summary")
         
         # Plot experimental and predicted data
         exp_x_list, exp_y_list, prd_y_list = self.get_exp_prd_data(x_label, y_label)

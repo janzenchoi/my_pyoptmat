@@ -86,5 +86,6 @@ class API:
         self.__ctrl__.define_data_mappers(self.__data_scale_dict__)
         self.__ctrl__.scale_and_process_data()
         self.__ctrl__.prepare(iterations, block_size)
+        self.__ctrl__.prepare_summary()
         self.__ctrl__.display_initial_information()
         self.__ctrl__.optimise()
