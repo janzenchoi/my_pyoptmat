@@ -14,11 +14,11 @@ class Model(__Model__):
     
     # Sets up the model
     def prepare(self):
-        self.define_param("n",   1.0e0, 1.0e1)
+        self.define_param("n",   1.0e0, 1.0e2)
         self.define_param("eta", 0.0e1, 1.0e4)
-        self.define_param("s0",  2.0e2, 5.0e2)
+        self.define_param("s0",  2.0e2, 5.0e3)
         self.define_param("R",   0.0e0, 1.0e4)
-        self.define_param("d",   0.0e1, 1.0e2)
+        self.define_param("d",   0.0e1, 1.0e3)
         self.youngs = self.get_constant(211000)
     
     # Returns the model integrator

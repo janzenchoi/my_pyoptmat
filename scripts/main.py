@@ -1,7 +1,7 @@
 import sys; sys.path += [".."]
 from myoptmat.api import API
 
-api = API(output_here=False)
+api = API(output_here=False, verbose=False)
 api.define_device("cpu")
 
 api.define_model("evp")

@@ -76,7 +76,7 @@ class __Model__():
         in_u_bound = torch.tensor(in_u_bound, device=self.device)
         out_l_bound, out_u_bound = param_mapper.get_out_bounds()
         factor = (out_u_bound - out_l_bound) / (in_u_bound - in_l_bound)
-        return lambda x: (x - out_l_bound) / factor + in_l_bound # no clamp
+        return lambda x: (torch.clamp(x, out_l_bound, out_u_bound) - out_l_bound) / factor + in_l_bound
     
     # Define the parameter mappers
     def define_param_mapper_dict(self, param_mapper_dict:dict):

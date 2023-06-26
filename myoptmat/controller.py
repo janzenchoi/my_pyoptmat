@@ -11,8 +11,9 @@ import myoptmat.interface.converter as converter
 import myoptmat.interface.progressor as progressor
 import myoptmat.interface.reader as reader
 import myoptmat.interface.recorder as recorder
-import myoptmat.math.mapper as mapper
 import myoptmat.math.general as general
+import myoptmat.math.mapper as mapper
+import myoptmat.math.units as units
 import myoptmat.models.__model__ as __model__
 
 # Constants
@@ -62,6 +63,7 @@ class Controller:
         self.loss_value_list = []
         self.recorder = None
         self.record_iterations = None
+        self.verbose = True
 
     # Defines the model
     def define_model(self, model_name:str):
@@ -196,9 +198,10 @@ class Controller:
         return lossv
 
     # Initialises the recorder
-    def initialise_recorder(self, record_path:str, record_iterations:int) -> None:
+    def initialise_recorder(self, record_path:str, record_iterations:int, verbose:bool=True) -> None:
         self.recorder = recorder.Recorder(record_path)
         self.record_iterations = record_iterations
+        self.verbose = verbose
     
     # Get current unscaled optimal parameters
     def get_opt_params(self) -> list:
@@ -231,8 +234,8 @@ class Controller:
     def optimise(self) -> None:
         
         # Initialise optimisation
-        general.print_value_list("Optimisation:", end="")
-        pv = progressor.ProgressVisualiser(self.iterations, pretext="loss=?, ")
+        progressor.print_value_list("Optimisation:", end="", do_print=self.verbose)
+        pv = progressor.ProgressVisualiser(self.iterations, pretext="loss=?, ", do_print=self.verbose)
         for curr_iteration in range(1, self.iterations+1):
             
             # Take a step, add loss to history, and print loss
@@ -247,7 +250,7 @@ class Controller:
         
         # End optimisation
         opt_params = self.get_opt_params()
-        general.print_value_list("Final Params:", opt_params)
+        progressor.print_value_list("Final Params:", opt_params, do_print=self.verbose)
         pv.end()
 
     # Runs each step of the optimisation
@@ -263,8 +266,8 @@ class Controller:
             "data":         HEADER_LIST,
             "d. bounds":       self.data_in_bound_list,
             "d. scales":       self.data_out_bound_list,
-            "|":            ["|"] * len(self.param_dict.keys()),
-            "parameter":    list(self.param_dict.keys()),
+            "|":               ["|"] * len(self.param_dict.keys()),
+            "parameter":       list(self.param_dict.keys()),
             "p. bounds":       self.param_in_bound_list,
             "p. scales":       self.param_out_bound_list,
             "p. optimised":    self.get_opt_params(),
@@ -275,7 +278,7 @@ class Controller:
         self.recorder.write_plot({
             "experimental": {"x": exp_x_list, "y": exp_y_list, "size": 5},
             "predicted":    {"x": exp_x_list, "y": prd_y_list, "size": 3}
-        }, "plot", x_label, y_label, "scatter")
+        }, "plot", units.MYOPTMAT_UNITS[x_label], units.MYOPTMAT_UNITS[y_label], "scatter")
         
         # Plots the loss history
         loss_x_list = list(range(1, len(self.loss_value_list)+1))
@@ -294,6 +297,8 @@ class Controller:
     # Displays the initial parameters and initial gradient
     def display_initial_information(self):
         
+        
+        
         # Display initial parameters
         initial_unscaled_param_list = []
         for i in range(len(self.param_dict.keys())):
@@ -301,10 +306,10 @@ class Controller:
             param_mapper = self.param_mapper_dict[param_name]
             unscaled_param = param_mapper.unmap(self.initial_param_list[i])
             initial_unscaled_param_list.append(unscaled_param)
-        general.print_value_list("Initial Params:", initial_unscaled_param_list)
+        progressor.print_value_list("Initial Params:", initial_unscaled_param_list, do_print=self.verbose)
         
         # Print initial gradient
         self.closure()
         gradients = [getattr(self.opt_model, param_name).grad for param_name in self.param_dict.keys()]
         gradients = [abs(g) for g in gradients]
-        general.print_value_list("Initial Gradient:", gradients)
+        progressor.print_value_list("Initial Gradient:", gradients, do_print=self.verbose)
