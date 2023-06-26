@@ -15,7 +15,7 @@ import torch; torch.set_default_tensor_type(torch.DoubleTensor)
 class API:
     
     # Constructor
-    def __init__(self, name="", input_dir:str="./data", output_dir:str="./results", output_here:bool=False, verbose:bool=True):
+    def __init__(self, name="", input_dir:str="./data", output_dir:str="./results", output_here:bool=False):
         
         # Define internal pathing
         time_str = time.strftime("%y%m%d%H%M%S", time.localtime(time.time()))
@@ -32,7 +32,6 @@ class API:
         self.__csv_file_list__ = []
         
         # Define other internal variables
-        self.__verbose__ = verbose
         self.__model_name__ = None
         self.__device_type__ = "cpu"
         self.__ctrl__ = controller.Controller()
@@ -76,10 +75,10 @@ class API:
     # Initialises the recorder
     def record(self, iterations:int=5) -> None:
         record_path = f"{self.__output_path__}/record"
-        self.__ctrl__.initialise_recorder(record_path, iterations, self.__verbose__)
+        self.__ctrl__.initialise_recorder(record_path, iterations)
     
     # Initiates optimisation
-    def optimise(self, iterations:int=5, block_size:int=40) -> None:
+    def optimise(self, iterations:int=5, block_size:int=40, update_iterations:int=1) -> None:
         self.__ctrl__.define_model(self.__model_name__)
         self.__ctrl__.define_param_mappers(self.__param_scale_dict__)
         self.__ctrl__.define_initial_values(self.__initial_param_dict__)
@@ -89,4 +88,4 @@ class API:
         self.__ctrl__.prepare(iterations, block_size)
         self.__ctrl__.prepare_summary()
         self.__ctrl__.display_initial_information()
-        self.__ctrl__.optimise()
+        self.__ctrl__.optimise(update_iterations)

@@ -1,7 +1,7 @@
 import sys; sys.path += [".."]
 from myoptmat.api import API
 
-api = API(output_here=False, verbose=False)
+api = API(output_here=False)
 api.define_device("cpu")
 
 api.define_model("evp")
@@ -23,4 +23,4 @@ api.scale_data("temperature", 0, 1)
 api.scale_data("cycle",       0, 1)
 
 api.record(iterations=1000)
-api.optimise(iterations=10000)
+api.optimise(iterations=10000, update_iterations=10)

@@ -11,8 +11,8 @@ import myoptmat.interface.converter as converter
 import myoptmat.interface.progressor as progressor
 import myoptmat.interface.reader as reader
 import myoptmat.interface.recorder as recorder
-import myoptmat.math.general as general
 import myoptmat.math.mapper as mapper
+import myoptmat.math.general as general
 import myoptmat.math.units as units
 import myoptmat.models.__model__ as __model__
 
@@ -63,7 +63,6 @@ class Controller:
         self.loss_value_list = []
         self.recorder = None
         self.record_iterations = None
-        self.verbose = True
 
     # Defines the model
     def define_model(self, model_name:str):
@@ -137,7 +136,7 @@ class Controller:
             self.data_mapper_dict[header] = data_mapper
     
     # Scale the data
-    def scale_and_process_data(self):
+    def scale_and_process_data(self) -> None:
         for csv_dict in self.csv_dict_list:
             for header in HEADER_LIST:
                 csv_dict[header] = self.data_mapper_dict[header].map(csv_dict[header])
@@ -198,10 +197,9 @@ class Controller:
         return lossv
 
     # Initialises the recorder
-    def initialise_recorder(self, record_path:str, record_iterations:int, verbose:bool=True) -> None:
+    def initialise_recorder(self, record_path:str, record_iterations:int) -> None:
         self.recorder = recorder.Recorder(record_path)
         self.record_iterations = record_iterations
-        self.verbose = verbose
     
     # Get current unscaled optimal parameters
     def get_opt_params(self) -> list:
@@ -231,18 +229,22 @@ class Controller:
         return exp_x_list, exp_y_list, prd_y_list
 
     # Conducts the optimisation
-    def optimise(self) -> None:
+    def optimise(self, update_iterations:int=1) -> None:
         
         # Initialise optimisation
-        progressor.print_value_list("Optimisation:", end="", do_print=self.verbose)
-        pv = progressor.ProgressVisualiser(self.iterations, pretext="loss=?, ", do_print=self.verbose)
+        general.print_value_list("Optimisation:", end="")
+        pv = progressor.ProgressVisualiser(self.iterations, pretext="loss=?, ")
         for curr_iteration in range(1, self.iterations+1):
             
             # Take a step, add loss to history, and print loss
             closure_loss = self.algorithm.step(self.closure)
-            loss_value = "{:0.2}".format(closure_loss.detach().cpu().numpy())
-            pv.progress(pretext=f"loss={loss_value}, ")
+            loss_value = float(closure_loss.detach().cpu().numpy())
             self.loss_value_list.append(float(loss_value))
+            
+            # Display every defined interval
+            loss_string = "{:0.2}".format(closure_loss.detach().cpu().numpy())
+            display = curr_iteration % update_iterations == 0
+            pv.progress(pretext=f"loss={loss_string}, ", display=display)
             
             # If recorder initialised and iterations reached, then record results
             if self.recorder != None and curr_iteration % self.record_iterations == 0:
@@ -250,7 +252,7 @@ class Controller:
         
         # End optimisation
         opt_params = self.get_opt_params()
-        progressor.print_value_list("Final Params:", opt_params, do_print=self.verbose)
+        general.print_value_list("Final Params:", opt_params)
         pv.end()
 
     # Runs each step of the optimisation
@@ -306,10 +308,10 @@ class Controller:
             param_mapper = self.param_mapper_dict[param_name]
             unscaled_param = param_mapper.unmap(self.initial_param_list[i])
             initial_unscaled_param_list.append(unscaled_param)
-        progressor.print_value_list("Initial Params:", initial_unscaled_param_list, do_print=self.verbose)
+        general.print_value_list("Initial Params:", initial_unscaled_param_list)
         
         # Print initial gradient
         self.closure()
         gradients = [getattr(self.opt_model, param_name).grad for param_name in self.param_dict.keys()]
         gradients = [abs(g) for g in gradients]
-        progressor.print_value_list("Initial Gradient:", gradients, do_print=self.verbose)
+        general.print_value_list("Initial Gradient:", gradients)

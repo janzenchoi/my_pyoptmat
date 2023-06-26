@@ -12,7 +12,7 @@ import time
 class ProgressVisualiser:
 
     # Constructor
-    def __init__(self, num_steps:int, pretext:str="", posttext:str="", clear:bool=False, newline:bool=True, do_print:bool=True):
+    def __init__(self, num_steps:int, pretext:str="", posttext:str="", clear:bool=False, newline:bool=True):
         
         # Initialise inputs
         self.num_steps  = num_steps
@@ -20,7 +20,6 @@ class ProgressVisualiser:
         self.posttext   = posttext
         self.clear      = clear
         self.newline    = newline
-        self.do_print   = do_print
         
         # Initialise other
         self.start_time = time.time()
@@ -31,10 +30,10 @@ class ProgressVisualiser:
         self.__print_progress__()
 
     # Progresses the process
-    def progress(self, pretext:str=None, posttext:str=None) -> None:
+    def progress(self, pretext:str=None, posttext:str=None, display:bool=True) -> None:
         self.pretext = pretext if pretext != None else self.pretext
         self.posttext = posttext if posttext != None else self.posttext
-        if self.curr_step <= self.num_steps:
+        if self.curr_step <= self.num_steps and display:
             self.__print_progress__() 
         if self.curr_step == self.num_steps and not self.clear and self.newline:
             print("")
@@ -49,15 +48,10 @@ class ProgressVisualiser:
 
     # Clears the display string
     def __clear_display__(self) -> None:
-        if self.do_print:
-            print("\b" * (len(self.display_string)), end="", flush=True)
+        print("\b" * (len(self.display_string)), end="", flush=True)
 
     # Prints the progress
     def __print_progress__(self) -> None:
-        
-        # Ignore if not printing
-        if not self.do_print:
-            return
         
         # Clear previous visual and apply pretext
         self.__clear_display__()
@@ -70,12 +64,3 @@ class ProgressVisualiser:
         # Apply post string and print
         self.display_string += self.posttext + "      "
         print(self.display_string, end="", flush=True)
-
-# Prints a list of values with formatting and padding
-def print_value_list(pre_text:str, value_list:list=[], padding:int=20, end:str="\n", do_print:bool=True) -> None:
-    if not do_print:
-        return
-    padding_str = (padding-len(pre_text)) * " "
-    str_list = ["{:0.3}".format(float(value)) for value in value_list]
-    str_str = f"[{', '.join(str_list)}]" if str_list != [] else ""
-    print(f"{pre_text}{padding_str}{str_str}", end=end)
