@@ -30,7 +30,6 @@ class Recorder:
         dataframe = pd.DataFrame(data, columns = columns)
         
         # Apply fit column widths
-        sheet_name = "results"
         dataframe.style.apply(centre_align, axis=0).to_excel(self.writer, sheet_name, index = False)
         sheet = self.writer.sheets[sheet_name]
         for column in dataframe:

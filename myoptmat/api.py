@@ -57,8 +57,12 @@ class API:
         self.__device_type__ = device_type
     
     # Defines the model
-    def define_model(self, model_name:str) -> None:
+    def def_model(self, model_name:str) -> None:
         self.__model_name__ = model_name
+    
+    # Defines the algorithm
+    def define_algorithm(self, algorithm_name:str) -> None:
+        self.__algorithm_name__ = algorithm_name
     
     # Sets the initial value for a parameter
     def initialise_param(self, param_name:str, param_value:float) -> None:
@@ -72,20 +76,18 @@ class API:
     def scale_data(self, data_name:str, l_bound:float=0, u_bound:float=1) -> None:
         self.__data_scale_dict__[data_name] = {"l_bound": l_bound, "u_bound": u_bound}
     
-    # Initialises the recorder
-    def record(self, iterations:int=5) -> None:
-        record_path = f"{self.__output_path__}/record"
-        self.__ctrl__.initialise_recorder(record_path, iterations)
-    
     # Initiates optimisation
-    def optimise(self, iterations:int=5, block_size:int=40, update_iterations:int=1) -> None:
-        self.__ctrl__.define_model(self.__model_name__)
+    def optimise(self, iterations:int=5, record:int=5, display:int=1) -> None:
+        record_path = f"{self.__output_path__}/record"
+        self.__ctrl__.initialise_recorder(record_path, record)
+        self.__ctrl__.def_model(self.__model_name__)
         self.__ctrl__.define_param_mappers(self.__param_scale_dict__)
         self.__ctrl__.define_initial_values(self.__initial_param_dict__)
         self.__ctrl__.load_csv_files(self.__csv_file_list__)
         self.__ctrl__.define_data_mappers(self.__data_scale_dict__)
         self.__ctrl__.scale_and_process_data()
-        self.__ctrl__.prepare(iterations, block_size)
+        self.__ctrl__.define_objectives()
+        self.__ctrl__.define_algorithm(self.__algorithm_name__)
         self.__ctrl__.prepare_summary()
         self.__ctrl__.display_initial_information()
-        self.__ctrl__.optimise(update_iterations)
+        self.__ctrl__.optimise(iterations, display)

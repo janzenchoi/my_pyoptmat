@@ -28,14 +28,15 @@ class Controller:
         
         # Initialise model variables
         self.model = None
-        self.block_size = None
-        self.iterations = None
         self.opt_model = None
+        
+        # Initialise optimisation variables
         self.algorithm = None
         self.loss_function = None
-        self.param_dict = {}
+        self.objective_list = []
         
         # Initialise parameter variables
+        self.param_dict = {}
         self.param_mapper_dict = {}
         self.initial_param_list = []
         
@@ -62,10 +63,10 @@ class Controller:
         # Initialise result variables
         self.loss_value_list = []
         self.recorder = None
-        self.record_iterations = None
+        self.record_interval = None
 
     # Defines the model
-    def define_model(self, model_name:str):
+    def def_model(self, model_name:str):
         self.model = __model__.get_model(model_name)
         self.param_dict = self.model.get_param_dict()
     
@@ -143,23 +144,24 @@ class Controller:
         self.dataset = converter.dict_list_to_dataset(self.csv_dict_list, 1, NUM_POINTS)
         self.data, self.results, self.cycles, self.types, self.control = reader.load_dataset(self.dataset)
     
-    # Prepare for the optimisation
-    # TODO - allow user to choose different optimisers and objective functions
-    def prepare(self, iterations:int, block_size:int) -> float:
-        
-        # Define optimisation parameters
-        self.iterations = iterations
-        self.block_size = block_size
-        
-        # Get deterministic model
-        self.opt_model = self.model.get_opt_model(self.initial_param_list, self.block_size)
-        params = self.opt_model.parameters()
-        
-        # Define algorithm and loss functions
-        # self.algorithm = torch.optim.LBFGS(params)
-        # self.algorithm = torch.optim.LBFGS(params, line_search_fn="strong_wolfe")
-        self.algorithm = torch.optim.Adam(params)
+    # Defines the objectives
+    def define_objectives(self) -> float:
         self.loss_function = torch.nn.MSELoss(reduction="sum")
+    
+    # Gets the objective values
+    def get_objective_values(self) -> float:
+        pass
+    
+    # Defines the optimiser
+    def define_algorithm(self, algorithm_name:str="adam") -> None:
+        self.opt_model = self.model.get_opt_model(self.initial_param_list, NUM_POINTS//2)
+        params = self.opt_model.parameters()
+        if algorithm_name == "adam":
+            self.algorithm = torch.optim.Adam(params)
+        elif algorithm_name == "lbfgs":
+            self.algorithm = torch.optim.LBFGS(params)
+        elif algorithm_name == "lbfgsl": # i.e., LBFGS with line search
+            self.algorithm = torch.optim.LBFGS(params, line_search_fn="strong_wolfe")
     
     # Prepares the summary information
     def prepare_summary(self):
@@ -197,9 +199,9 @@ class Controller:
         return lossv
 
     # Initialises the recorder
-    def initialise_recorder(self, record_path:str, record_iterations:int) -> None:
+    def initialise_recorder(self, record_path:str, record_interval:int) -> None:
         self.recorder = recorder.Recorder(record_path)
-        self.record_iterations = record_iterations
+        self.record_interval = record_interval
     
     # Get current unscaled optimal parameters
     def get_opt_params(self) -> list:
@@ -211,7 +213,15 @@ class Controller:
             opt_param_list.append(unscaled_param)
         return opt_param_list
     
-    # Get experimental and predicted data (based on optimal parameters)
+    # # Gets experimental and predicted data
+    # def get_exp_prd_data(self, x_label:str, y_label:str) -> dict:
+        
+    #     # Gets the unmapped (y) prediction
+    #     prediction = self.get_prediction()
+    #     prediction = self.data_mapper_dict[y_label].unmap(prediction)
+        
+    
+    # Get flattened experimental and predicted data (based on optimal parameters)
     def get_exp_prd_data(self, x_label:str, y_label:str) -> tuple:
         
         # Get prediction
@@ -229,12 +239,12 @@ class Controller:
         return exp_x_list, exp_y_list, prd_y_list
 
     # Conducts the optimisation
-    def optimise(self, update_iterations:int=1) -> None:
+    def optimise(self, iterations:int=5, update_interval:int=1) -> None:
         
         # Initialise optimisation
         general.print_value_list("Optimisation:", end="")
-        pv = progressor.ProgressVisualiser(self.iterations, pretext="loss=?, ")
-        for curr_iteration in range(1, self.iterations+1):
+        pv = progressor.ProgressVisualiser(iterations, pretext="loss=?, ")
+        for curr_iteration in range(1, iterations+1):
             
             # Take a step, add loss to history, and print loss
             closure_loss = self.algorithm.step(self.closure)
@@ -243,12 +253,12 @@ class Controller:
             
             # Display every defined interval
             loss_string = "{:0.2}".format(closure_loss.detach().cpu().numpy())
-            display = curr_iteration % update_iterations == 0
+            display = curr_iteration % update_interval == 0
             pv.progress(pretext=f"loss={loss_string}, ", display=display)
             
             # If recorder initialised and iterations reached, then record results
-            if self.recorder != None and curr_iteration % self.record_iterations == 0:
-                self.record_results(curr_iteration)
+            if self.recorder != None and curr_iteration % self.record_interval == 0:
+                self.record_results(iterations, curr_iteration)
         
         # End optimisation
         opt_params = self.get_opt_params()
@@ -256,10 +266,10 @@ class Controller:
         pv.end()
 
     # Runs each step of the optimisation
-    def record_results(self, curr_iteration:int) -> None:
+    def record_results(self, iterations:int, curr_iteration:int) -> None:
         
         # Initialise
-        curr_iteration = str(curr_iteration).zfill(len(str(self.iterations)))
+        curr_iteration = str(curr_iteration).zfill(len(str(iterations)))
         self.recorder.create_new_file(curr_iteration)
         x_label, y_label = "strain", "stress"
 
@@ -298,8 +308,6 @@ class Controller:
     
     # Displays the initial parameters and initial gradient
     def display_initial_information(self):
-        
-        
         
         # Display initial parameters
         initial_unscaled_param_list = []

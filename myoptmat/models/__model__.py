@@ -33,7 +33,7 @@ class __Model__():
     
     # Returns the integrator of the model - placeholder that must be overridden
     def get_integrator(self, *param, **kwargs) -> None:
-        raise NotImplemented("The 'define_model' function has not been implemented!")
+        raise NotImplemented("The 'def_model' function has not been implemented!")
 
     # Sets the name of the model
     def set_name(self, name:str) -> None:
